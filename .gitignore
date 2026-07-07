@@ -24,3 +24,6 @@ dist/
 **/build/
 *.apk
 *.aab
+
+# --- Local GitHub SSH key for this workspace ---
+.github-ssh/
