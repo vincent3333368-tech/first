@@ -203,7 +203,7 @@
                 <div v-if="showForm" class="fixed inset-0 z-[60] flex justify-center ios-safe-top bg-slate-900/10 backdrop-blur-sm">
                     <div class="w-full max-w-md bg-white flex flex-col shadow-2xl h-full overflow-hidden relative">
                         <div class="px-5 py-3 border-b flex justify-between items-center bg-white sticky top-0 z-10">
-                            <button @click="showForm = false" class="w-10 h-10 flex items-center justify-center bg-slate-50 rounded-full text-slate-600">
+                            <button @click="closeFormWithPrompt" class="w-10 h-10 flex items-center justify-center bg-slate-50 rounded-full text-slate-600">
                                 <i data-lucide="chevron-left" class="w-6 h-6"></i>
                             </button>
                             <h2 class="text-sm font-black text-slate-800 tracking-widest uppercase flex-1 text-center">资产详情</h2>
@@ -380,6 +380,7 @@
                 const loginForm = ref({ email: '', password: '' });
                 const items = ref([]);
                 const showForm = ref(false);
+                const formSnapshot = ref('');
                 const activeExpanded = ref(true);
                 const retiredExpanded = ref(false); 
                 const form = ref({});
@@ -409,6 +410,14 @@
                         clearTimeout(loaderTimer);
                         document.body.classList.add('loaded');
                     }
+
+                    window.HowMuchAppBack = handleAppBack;
+                    window.addEventListener('beforeunload', (event) => {
+                        if (hasUnsavedChanges()) {
+                            event.preventDefault();
+                            event.returnValue = '';
+                        }
+                    });
 
                     // iOS 适配逻辑保持不变
                     window.addEventListener('touchstart', e => {
@@ -507,6 +516,42 @@
 
                 const handleLogout = () => { handleExport(); };
 
+                const snapshotForm = (value) => JSON.stringify(normalizeItem({
+                    ...value,
+                    additional_expenses: (value.additional_expenses || []).map(exp => ({
+                        name: exp.name || '',
+                        amount: Number(exp.amount) || 0,
+                        date: exp.date || ''
+                    }))
+                }));
+
+                const hasUnsavedChanges = () => showForm.value && snapshotForm(form.value || {}) !== formSnapshot.value;
+
+                const closeFormWithPrompt = async () => {
+                    if (!showForm.value) return true;
+                    if (!hasUnsavedChanges()) {
+                        showForm.value = false;
+                        return true;
+                    }
+
+                    const shouldSave = confirm("当前页面有未保存的更改，是否保存？\n\n确定：保存并返回\n取消：放弃更改并返回");
+                    if (shouldSave) {
+                        return await save();
+                    }
+
+                    showForm.value = false;
+                    return true;
+                };
+
+                const handleAppBack = async () => {
+                    if (showForm.value) return await closeFormWithPrompt();
+                    if (showFilters.value) {
+                        showFilters.value = false;
+                        return true;
+                    }
+                    return false;
+                };
+
                 const openForm = (item = null) => {
                     iconsExpanded.value = false; // 每次打开表单默认图标折叠
                     form.value = item ? { 
@@ -516,7 +561,7 @@
                         // 👇👇👇 【核心修改在这里】 👇👇👇
                         // 原代码: additional_expenses: item.additional_expenses || [],
                         // 修改为: 增加 .sort() 排序逻辑 (dayjs(b.date) - dayjs(a.date) 代表降序，最新的在上面)
-                        additional_expenses: (item.additional_expenses || []).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf()),
+                        additional_expenses: (item.additional_expenses || []).slice().sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf()),
                         // 👆👆👆 【修改结束】 👆👆👆
                         enable_target: item.enable_target || false,
                         target_daily: item.target_daily || null
@@ -525,6 +570,7 @@
                         buy_date: dayjs().format('YYYY-MM-DD'), retire_date: dayjs().format('YYYY-MM-DD'), resale_price: 0, additional_expenses: [],
                         enable_target: false, target_daily: null
                     };
+                    formSnapshot.value = snapshotForm(form.value);
                     showForm.value = true;
                 };
 
@@ -535,7 +581,10 @@
                 };
 
                 const save = async () => {
-                    if(!form.value.name || !form.value.price) return alert("名称和价格必填");
+                    if(!form.value.name || !form.value.price) {
+                        alert("名称和价格必填");
+                        return false;
+                    }
 
                     const data = normalizeItem({ ...form.value });
                     if (data.additional_expenses) {
@@ -562,8 +611,10 @@
                     }
 
                     persistLocalItems(items.value);
+                    formSnapshot.value = snapshotForm(data);
                     showForm.value = false;
                     fetchData();
+                    return true;
                 };
 
                 const deleteItem = async () => {
@@ -649,7 +700,7 @@
                     activeExpanded, retiredExpanded, form, iconList, 
                     calc, totalDailyCost, activeTotal, grandTotal, metTargetsCount,
                     openForm, save, deleteItem, categories, sortBy, filterCategory,
-                    addExpense, isTargetMet, toggleIconExpand,handleExport, handleImport,fileInput
+                    addExpense, isTargetMet, toggleIconExpand, handleAppBack, closeFormWithPrompt, handleExport, handleImport,fileInput
                 };
             }
         }).mount('#app');

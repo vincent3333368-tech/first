@@ -9,6 +9,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.view.MotionEvent;
+import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -25,9 +27,15 @@ import java.nio.charset.StandardCharsets;
 public class MainActivity extends Activity {
     private static final int FILE_CHOOSER_REQUEST = 10;
     private static final String LOCAL_APP_URL = "file:///android_asset/index.html";
+    private static final int EDGE_SWIPE_WIDTH_DP = 36;
+    private static final int BACK_SWIPE_DISTANCE_DP = 96;
+    private static final int BACK_SWIPE_MAX_VERTICAL_DP = 72;
 
     private WebView webView;
     private ValueCallback<Uri[]> filePathCallback;
+    private float gestureStartX;
+    private float gestureStartY;
+    private boolean trackingBackGesture;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,6 +59,12 @@ public class MainActivity extends Activity {
 
         webView.addJavascriptInterface(new BackupBridge(), "HowMuchAndroid");
         webView.setWebViewClient(new WebViewClient());
+        webView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View view, MotionEvent event) {
+                return handleBackSwipe(event);
+            }
+        });
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
@@ -85,11 +99,68 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        requestAppBack();
+    }
+
+    private boolean handleBackSwipe(MotionEvent event) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                gestureStartX = event.getX();
+                gestureStartY = event.getY();
+                trackingBackGesture = gestureStartX <= dpToPx(EDGE_SWIPE_WIDTH_DP);
+                return false;
+            case MotionEvent.ACTION_MOVE:
+                if (!trackingBackGesture) {
+                    return false;
+                }
+                float moveX = event.getX() - gestureStartX;
+                float moveY = Math.abs(event.getY() - gestureStartY);
+                return moveX > 12 && moveY < dpToPx(BACK_SWIPE_MAX_VERTICAL_DP);
+            case MotionEvent.ACTION_UP:
+                if (trackingBackGesture) {
+                    float dx = event.getX() - gestureStartX;
+                    float dy = Math.abs(event.getY() - gestureStartY);
+                    trackingBackGesture = false;
+                    if (dx >= dpToPx(BACK_SWIPE_DISTANCE_DP) && dy <= dpToPx(BACK_SWIPE_MAX_VERTICAL_DP)) {
+                        requestAppBack();
+                        return true;
+                    }
+                }
+                return false;
+            case MotionEvent.ACTION_CANCEL:
+                trackingBackGesture = false;
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    private void requestAppBack() {
+        if (webView == null) {
+            finish();
+            return;
+        }
+
+        webView.evaluateJavascript(
+                "(async function(){try{return !!(window.HowMuchAppBack && await window.HowMuchAppBack());}catch(e){return false;}})();",
+                handled -> {
+                    if (!"true".equals(handled)) {
+                        fallbackBack();
+                    }
+                }
+        );
+    }
+
+    private void fallbackBack() {
         if (webView != null && webView.canGoBack()) {
             webView.goBack();
-        } else {
-            super.onBackPressed();
+            return;
         }
+        finish();
+    }
+
+    private int dpToPx(int dp) {
+        return Math.round(dp * getResources().getDisplayMetrics().density);
     }
 
     public class BackupBridge {
