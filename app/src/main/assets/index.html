@@ -48,6 +48,7 @@
                 </div>
                 <h2 class="text-xl font-black text-slate-800 mb-2 tracking-tighter uppercase">HowMuch Verify</h2>
                 <div class="w-full space-y-4">
+                    <input v-model="serverUrl" type="url" placeholder="PocketBase 服务地址，例如 http://192.168.1.10:9001" class="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none font-bold text-center text-xs">
                     <input v-model="loginForm.email" type="email" placeholder="Email" class="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none font-bold text-center">
                     <input v-model="loginForm.password" @keyup.enter="handleLogin" type="password" placeholder="Password" class="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none font-bold text-center">
                     <button @click="handleLogin" :disabled="loading" class="w-full h-16 bg-slate-900 text-white rounded-2xl font-black shadow-xl active:scale-95 transition-all">确认进入</button>
@@ -339,26 +340,26 @@
         const { createApp, ref, onMounted, computed, nextTick, watch } = Vue;
         const PB_URL_KEY = 'howmuch_pocketbase_url';
 
-        // 作者页面原本运行在 PocketBase 服务器根路径；打包进 APK 后需要显式指定后端地址。
-        const resolvePocketBaseUrl = () => {
-            if (window.location.protocol !== 'file:') return '/';
-            const savedUrl = localStorage.getItem(PB_URL_KEY);
-            if (savedUrl) return savedUrl;
+        const isPackagedApp = window.location.protocol === 'file:';
 
-            const inputUrl = prompt('请输入 PocketBase 服务器地址，例如：http://192.168.1.10:9001');
-            if (inputUrl && inputUrl.trim()) {
-                const normalizedUrl = inputUrl.trim().replace(/\/$/, '');
-                localStorage.setItem(PB_URL_KEY, normalizedUrl);
-                return normalizedUrl;
-            }
-            return '/';
+        const normalizePocketBaseUrl = (url) => {
+            const trimmed = (url || '').trim();
+            if (!trimmed) return '';
+            return trimmed.replace(/\/$/, '');
         };
 
-        const pb = new PocketBase(resolvePocketBaseUrl());
+        const getStoredPocketBaseUrl = () => {
+            if (!isPackagedApp) return '/';
+            return normalizePocketBaseUrl(localStorage.getItem(PB_URL_KEY));
+        };
+
+        // 作者页面原本运行在 PocketBase 服务器根路径；打包进 APK 后由登录页指定后端地址。
+        let pb = new PocketBase(getStoredPocketBaseUrl() || '/');
 
         createApp({
             setup() {
-                const isLogged = ref(pb.authStore.isValid);
+                const serverUrl = ref(getStoredPocketBaseUrl());
+                const isLogged = ref(Boolean(serverUrl.value || !isPackagedApp) && pb.authStore.isValid);
                 const loading = ref(false);
                 const showFilters = ref(false);
                 const iconsExpanded = ref(false); // 控制图标面板展开
@@ -517,10 +518,23 @@
                 const handleLogin = async () => {
                     loading.value = true;
                     try {
+                        const normalizedUrl = normalizePocketBaseUrl(serverUrl.value);
+                        if (isPackagedApp && !normalizedUrl) {
+                            alert("请先填写 PocketBase 服务器地址");
+                            return;
+                        }
+
+                        if (isPackagedApp) {
+                            localStorage.setItem(PB_URL_KEY, normalizedUrl);
+                        }
+                        pb = new PocketBase(normalizedUrl || '/');
                         await pb.collection('users').authWithPassword(loginForm.value.email, loginForm.value.password);
                         isLogged.value = true;
                         fetchData();
-                    } catch (e) { alert("验证失败"); } finally { loading.value = false; }
+                    } catch (e) {
+                        console.error("登录失败详情:", e.response?.data || e);
+                        alert("验证失败，请检查服务器地址、账号密码和网络");
+                    } finally { loading.value = false; }
                 };
 
                 const handleLogout = () => { pb.authStore.clear(); isLogged.value = false; items.value = []; };
@@ -754,7 +768,7 @@
                 watch([showForm, showFilters, sortBy, filterCategory, isLogged, activeExpanded, retiredExpanded], refreshIcons);
                 
                 return { 
-                    isLogged, loading, loginForm, handleLogin, handleLogout, 
+                    isLogged, loading, serverUrl, loginForm, handleLogin, handleLogout, 
                     items, filteredActiveItems, retiredItems, showForm, showFilters, iconsExpanded,
                     activeExpanded, retiredExpanded, form, iconList, 
                     calc, totalDailyCost, activeTotal, grandTotal, metTargetsCount,
