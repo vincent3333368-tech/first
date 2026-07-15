@@ -380,6 +380,7 @@
                 const loginForm = ref({ email: '', password: '' });
                 const items = ref([]);
                 const showForm = ref(false);
+                // 打开表单时保存一份标准化快照，用于判断用户是否改过内容。
                 const formSnapshot = ref('');
                 const activeExpanded = ref(true);
                 const retiredExpanded = ref(false); 
@@ -411,6 +412,7 @@
                         document.body.classList.add('loaded');
                     }
 
+                    // Android WebView 会调用这个全局函数，让系统返回键和侧滑返回都走同一套网页逻辑。
                     window.HowMuchAppBack = handleAppBack;
                     window.addEventListener('beforeunload', (event) => {
                         if (hasUnsavedChanges()) {
@@ -516,6 +518,7 @@
 
                 const handleLogout = () => { handleExport(); };
 
+                // 统一字段格式后再比较，避免日期、空数组、数字字符串等细节造成误判。
                 const snapshotForm = (value) => JSON.stringify(normalizeItem({
                     ...value,
                     additional_expenses: (value.additional_expenses || []).map(exp => ({
@@ -525,8 +528,10 @@
                     }))
                 }));
 
+                // 只有表单弹层打开时才需要判断未保存变更。
                 const hasUnsavedChanges = () => showForm.value && snapshotForm(form.value || {}) !== formSnapshot.value;
 
+                // 所有离开表单的入口都走这里，保证返回按钮、侧滑返回、物理返回行为一致。
                 const closeFormWithPrompt = async () => {
                     if (!showForm.value) return true;
                     if (!hasUnsavedChanges()) {
@@ -543,6 +548,7 @@
                     return true;
                 };
 
+                // 返回 true 表示网页已经处理本次返回；返回 false 时交给 Android 关闭页面或退出应用。
                 const handleAppBack = async () => {
                     if (showForm.value) return await closeFormWithPrompt();
                     if (showFilters.value) {
@@ -570,6 +576,7 @@
                         buy_date: dayjs().format('YYYY-MM-DD'), retire_date: dayjs().format('YYYY-MM-DD'), resale_price: 0, additional_expenses: [],
                         enable_target: false, target_daily: null
                     };
+                    // 表单展示前记录初始值，之后的改动都和这份快照比较。
                     formSnapshot.value = snapshotForm(form.value);
                     showForm.value = true;
                 };
@@ -611,6 +618,7 @@
                     }
 
                     persistLocalItems(items.value);
+                    // 保存成功后刷新快照，避免保存完成关闭时仍被判断为未保存。
                     formSnapshot.value = snapshotForm(data);
                     showForm.value = false;
                     fetchData();

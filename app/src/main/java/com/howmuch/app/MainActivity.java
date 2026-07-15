@@ -27,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 public class MainActivity extends Activity {
     private static final int FILE_CHOOSER_REQUEST = 10;
     private static final String LOCAL_APP_URL = "file:///android_asset/index.html";
+    // 侧滑返回只从屏幕左边缘开始识别，避免和页面内部横向滑动冲突。
     private static final int EDGE_SWIPE_WIDTH_DP = 36;
     private static final int BACK_SWIPE_DISTANCE_DP = 96;
     private static final int BACK_SWIPE_MAX_VERTICAL_DP = 72;
@@ -59,6 +60,7 @@ public class MainActivity extends Activity {
 
         webView.addJavascriptInterface(new BackupBridge(), "HowMuchAndroid");
         webView.setWebViewClient(new WebViewClient());
+        // WebView 不会自动提供 Android 的全局侧滑返回，这里手动把边缘手势转成应用返回事件。
         webView.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View view, MotionEvent event) {
@@ -105,6 +107,7 @@ public class MainActivity extends Activity {
     private boolean handleBackSwipe(MotionEvent event) {
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
+                // 只记录从左边缘开始的触摸，普通页面点击和滚动继续交给 WebView。
                 gestureStartX = event.getX();
                 gestureStartY = event.getY();
                 trackingBackGesture = gestureStartX <= dpToPx(EDGE_SWIPE_WIDTH_DP);
@@ -115,6 +118,7 @@ public class MainActivity extends Activity {
                 }
                 float moveX = event.getX() - gestureStartX;
                 float moveY = Math.abs(event.getY() - gestureStartY);
+                // 横向距离足够且纵向偏移不大时，拦截后续事件，避免页面误触。
                 return moveX > 12 && moveY < dpToPx(BACK_SWIPE_MAX_VERTICAL_DP);
             case MotionEvent.ACTION_UP:
                 if (trackingBackGesture) {
@@ -141,6 +145,7 @@ public class MainActivity extends Activity {
             return;
         }
 
+        // 先交给网页处理弹层、未保存提示等业务返回；网页未处理时再走 WebView/Activity 默认返回。
         webView.evaluateJavascript(
                 "(async function(){try{return !!(window.HowMuchAppBack && await window.HowMuchAppBack());}catch(e){return false;}})();",
                 handled -> {
