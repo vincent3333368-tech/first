@@ -52,6 +52,7 @@
                     <input v-model="loginForm.email" type="email" placeholder="Email" class="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none font-bold text-center">
                     <input v-model="loginForm.password" @keyup.enter="handleLogin" type="password" placeholder="Password" class="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none font-bold text-center">
                     <button @click="handleLogin" :disabled="loading" class="w-full h-16 bg-slate-900 text-white rounded-2xl font-black shadow-xl active:scale-95 transition-all">确认进入</button>
+                    <button @click="createTestAccount" :disabled="loading" class="w-full h-12 bg-blue-50 text-blue-600 rounded-2xl font-black text-xs active:scale-95 transition-all">创建测试账号 admin@123.com</button>
                 </div>
             </div>
         </transition>
@@ -339,6 +340,8 @@
     <script>
         const { createApp, ref, onMounted, computed, nextTick, watch } = Vue;
         const PB_URL_KEY = 'howmuch_pocketbase_url';
+        const TEST_ACCOUNT_EMAIL = 'admin@123.com';
+        const TEST_ACCOUNT_PASSWORD = '123456';
 
         const isPackagedApp = window.location.protocol === 'file:';
 
@@ -534,6 +537,41 @@
                     } catch (e) {
                         console.error("登录失败详情:", e.response?.data || e);
                         alert("验证失败，请检查服务器地址、账号密码和网络");
+                    } finally { loading.value = false; }
+                };
+
+                const createTestAccount = async () => {
+                    loading.value = true;
+                    try {
+                        const normalizedUrl = normalizePocketBaseUrl(serverUrl.value);
+                        if (isPackagedApp && !normalizedUrl) {
+                            alert("请先填写 PocketBase 服务器地址");
+                            return;
+                        }
+
+                        if (isPackagedApp) {
+                            localStorage.setItem(PB_URL_KEY, normalizedUrl);
+                        }
+                        pb = new PocketBase(normalizedUrl || '/');
+                        await pb.collection('users').create({
+                            email: TEST_ACCOUNT_EMAIL,
+                            password: TEST_ACCOUNT_PASSWORD,
+                            passwordConfirm: TEST_ACCOUNT_PASSWORD
+                        });
+
+                        loginForm.value.email = TEST_ACCOUNT_EMAIL;
+                        loginForm.value.password = TEST_ACCOUNT_PASSWORD;
+                        await handleLogin();
+                    } catch (e) {
+                        console.error("创建测试账号失败详情:", e.response?.data || e);
+                        const emailErrorCode = e.response?.data?.email?.code || '';
+                        if (emailErrorCode.includes('not_unique') || emailErrorCode.includes('unique')) {
+                            loginForm.value.email = TEST_ACCOUNT_EMAIL;
+                            loginForm.value.password = TEST_ACCOUNT_PASSWORD;
+                            alert("测试账号可能已存在，已自动填入账号密码，请直接登录");
+                            return;
+                        }
+                        alert("创建测试账号失败，请检查服务器地址、网络或 users 集合创建权限");
                     } finally { loading.value = false; }
                 };
 
@@ -768,7 +806,7 @@
                 watch([showForm, showFilters, sortBy, filterCategory, isLogged, activeExpanded, retiredExpanded], refreshIcons);
                 
                 return { 
-                    isLogged, loading, serverUrl, loginForm, handleLogin, handleLogout, 
+                    isLogged, loading, serverUrl, loginForm, handleLogin, createTestAccount, handleLogout, 
                     items, filteredActiveItems, retiredItems, showForm, showFilters, iconsExpanded,
                     activeExpanded, retiredExpanded, form, iconList, 
                     calc, totalDailyCost, activeTotal, grandTotal, metTargetsCount,

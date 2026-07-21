@@ -28,7 +28,7 @@
         "hidden": true,
         "id": "password901924565",
         "max": 0,
-        "min": 8,
+        "min": 6,
         "name": "password",
         "pattern": "",
         "presentable": false,
