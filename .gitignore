@@ -1,11 +1,16 @@
 # --- PocketBase 核心数据 (绝对不能上传) ---
 # 数据库存储在这里，包含你的账号、密码和资产数据，必须忽略
 pb_data/
+pb_data_*/
 
 # --- 可执行文件 ---
 # PocketBase 的主程序文件，别人可以通过 wget 自行下载，没必要上传
 pocketbase
 pocketbase.exe
+pocketbase*.exe
+pocketbase*.zip
+sf_*.html
+pb022_extract/
 
 # --- 日志与临时文件 ---
 *.log
